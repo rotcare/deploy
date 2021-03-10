@@ -1,0 +1,11 @@
+{
+    "name": "@stableinf/deploy",
+    "version": "0.1.0",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/stableinf/deploy.git"
+    },
+    "peerDependencies": {
+        "@stableinf/cloud-mem": "*"
+    }
+}
