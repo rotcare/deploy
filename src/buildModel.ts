@@ -30,6 +30,8 @@ interface SrcFile {
 
 export type Archetype = 'Gateway' | 'ActiveRecord' | 'Widget' | 'Command';
 
+// @motherboard 开头的路径都是由这个 esbuildPlugin 虚构出来的
+// 其源代码来自于 project 的多个 packages 合并而来
 export function esbuildPlugin(project: Project): esbuild.Plugin {
     return {
         name: 'stableinf',

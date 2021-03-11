@@ -7,6 +7,7 @@ export class Project {
     public readonly projectPackageName: string;
     public readonly projectDir: string;
     public subscribePath = (filePath: string): void => {};
+    public onChange: (filePath?: string) => void;
 
     constructor(relProjectDir: string) {
         this.projectDir = path.join(process.cwd(), relProjectDir || '.');
@@ -35,6 +36,7 @@ export class Project {
     }
 
     public startWatcher(onChange: (filePath?: string) => void) {
+        this.onChange = onChange;
         const watcher = new chokidar.FSWatcher();
         watcher.on('all', (eventName, filePath) => onChange(filePath));
         this.subscribePath = watcher.add.bind(watcher);
@@ -47,8 +49,8 @@ export class Project {
         }
         this.knownPackageNames.add(packageName);
         try {
-            const dir = path.dirname(require.resolve(`${packageName}/package.json`));
-            this.subscribePath(dir);
+            const pkgJsonPath = require.resolve(`${packageName}/package.json`);
+            this.subscribePath(path.dirname(pkgJsonPath));
         } catch (e) {
             // ignore
         }

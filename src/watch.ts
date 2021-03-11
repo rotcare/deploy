@@ -2,9 +2,9 @@ import * as memCloud from '@stableinf/cloud-mem';
 import { deployFrontend } from './deployFrontend';
 import { Project } from './Project';
 import { Cloud } from '@stableinf/cloud';
+import { deployBackend } from './deployBackend';
 
 export async function watch(projectDir: string) {
-    console.log(process.cwd())
     const cloud = await memCloud.startCloud();
     const project = new Project(projectDir);
     project.startWatcher(deploy.bind(undefined, cloud, project));
@@ -28,9 +28,9 @@ function deploy(cloud: Cloud, project: Project, changedFile?: string) {
         deployFrontend(cloud, project).catch((e) => {
             console.error(`deployFrontend failed: ${e}`);
         }),
-        // deployBackend(cloud, project).catch((e) => {
-        //     console.error(`deployBackend failed: ${e}`);
-        // }),
+        deployBackend(cloud, project).catch((e) => {
+            console.error(`deployBackend failed: ${e}`);
+        }),
     ];
     deploying = Promise.all(promises);
     deploying.finally(() => {
