@@ -78,7 +78,7 @@ function generateBackend(project: Project) {
     const lines = [
         `
 const { Impl, Scene } = require('@rotcare/io');
-SERVERLESS.sceneConf = {
+SERVERLESS.ioConf = {
     database: new Impl.InMemDatabase(),
     serviceProtocol: undefined,
 };`,
