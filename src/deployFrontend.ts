@@ -30,7 +30,9 @@ export async function deployFrontend(cloud: Cloud, project: Project) {
         }) as Promise<esbuild.BuildIncremental>);
         project.subscribePath(path.join(project.projectDir, 'frontend.js'));
     }
-    const html = await readFileWithCache(path.join(project.projectDir, 'index.html'));
+    const htmlPath = path.join(project.projectDir, 'index.html');
+    project.subscribePath(htmlPath);
+    const html = await readFileWithCache(htmlPath);
     await cloud.objectStorage.putObject('/', html);
     await cloud.objectStorage.putObject('/frontend.js', result.outputFiles![0].text);
 }

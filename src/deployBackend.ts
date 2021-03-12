@@ -62,13 +62,15 @@ export async function deployBackend(cloud: Cloud, project: Project) {
         for (const service of model.services) {
             await cloud.serverless.createFunction(service);
             await cloud.apiGateway.createRoute({
-                projectPackageName: project.projectPackageName,
                 path: `/${service}`,
                 httpMethod: 'POST',
                 functionName: service,
             });
         }
     }
+    await cloud.apiGateway.reload({
+        projectPackageName: project.projectPackageName,
+    });
 }
 
 // watch fs and dump bakcend services into serverlessFunctions.js
