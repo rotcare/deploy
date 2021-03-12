@@ -1,4 +1,4 @@
-import { Cloud } from '@stableinf/cloud';
+import { Cloud } from '@rotcare/cloud';
 import * as esbuild from 'esbuild';
 import * as fs from 'fs';
 import { promisify } from 'util';

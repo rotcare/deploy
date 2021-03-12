@@ -4,7 +4,7 @@ import { Project } from './Project';
 import { watch } from './watch';
 
 export async function main() {
-    const program = new Command('stableinf');
+    const program = new Command('rotcare');
     program.command('watch [projectDir]').action(watch);
     program
         .command('model <projectDir> <qualifiedName>')

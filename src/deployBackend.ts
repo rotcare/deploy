@@ -1,4 +1,4 @@
-import { Cloud } from '@stableinf/cloud';
+import { Cloud } from '@rotcare/cloud';
 import * as esbuild from 'esbuild';
 import { esbuildPlugin, listBuiltModels } from './buildModel';
 import { Project } from './Project';
@@ -75,7 +75,7 @@ export async function deployBackend(cloud: Cloud, project: Project) {
 function generateBackend(project: Project) {
     const lines = [
         `
-const { Impl, Scene } = require('@stableinf/io');
+const { Impl, Scene } = require('@rotcare/io');
 SERVERLESS.sceneConf = {
     database: new Impl.InMemDatabase(),
     serviceProtocol: undefined,

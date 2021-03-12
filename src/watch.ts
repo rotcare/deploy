@@ -1,7 +1,7 @@
-import * as memCloud from '@stableinf/cloud-mem';
+import * as memCloud from '@rotcare/cloud-mem';
 import { deployFrontend } from './deployFrontend';
 import { Project } from './Project';
-import { Cloud } from '@stableinf/cloud';
+import { Cloud } from '@rotcare/cloud';
 import { deployBackend } from './deployBackend';
 
 export async function watch(projectDir: string) {

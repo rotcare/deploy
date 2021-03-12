@@ -18,7 +18,7 @@ export class Project {
             throw e;
         }
         this.projectPackageName = packageJson.name;
-        const projectType = packageJson.stableinf?.project || 'solo';
+        const projectType = packageJson.rotcare?.project || 'solo';
         if (projectType === 'composite') {
             for (const pkg of Object.keys(packageJson.dependencies)) {
                 try {

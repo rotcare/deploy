@@ -34,7 +34,7 @@ export type Archetype = 'Gateway' | 'ActiveRecord' | 'Widget' | 'Command';
 // 其源代码来自于 project 的多个 packages 合并而来
 export function esbuildPlugin(project: Project): esbuild.Plugin {
     return {
-        name: 'stableinf',
+        name: 'rotcare',
         setup: (build) => {
             build.onResolve({ filter: /^@motherboard\// }, (args) => {
                 return { path: args.path, namespace: '@motherboard' };
