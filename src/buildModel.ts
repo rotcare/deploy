@@ -36,8 +36,13 @@ export function esbuildPlugin(project: Project): esbuild.Plugin {
     return {
         name: 'rotcare',
         setup: (build) => {
-            build.onResolve({ filter: /^@motherboard\// }, (args) => {
-                return { path: args.path, namespace: '@motherboard' };
+            build.onResolve({ filter: /^[^.]/ }, (args) => {
+                if (args.path.startsWith('@motherboard/')) {
+                    return { path: args.path, namespace: '@motherboard' };
+                } else {
+                    project.subscribePackage(args.path);
+                    return undefined;
+                }
             });
             build.onLoad({ namespace: '@motherboard', filter: /^@motherboard\// }, async (args) => {
                 const model = await buildModel(project, args.path.substr('@motherboard/'.length));
@@ -255,8 +260,6 @@ function mergeImports(project: Project, qualifiedName: string, imports: babel.Im
                 path.dirname(qualifiedName),
                 stmt.source.value,
             )}`;
-        } else if (!stmt.source.value.startsWith('@motherboard/')) {
-            project.subscribePackage(stmt.source.value);
         }
         const specifiers = [];
         for (const specifier of stmt.specifiers) {
