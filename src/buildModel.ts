@@ -89,11 +89,11 @@ export async function buildModel(project: Project, qualifiedName: string) {
     if (classDecls.length > 0) {
         if (babel.isIdentifier(classDecls[0].superClass)) {
             archetype = classDecls[0].superClass.name as Archetype;
-            const mergedClassDecl = mergeClassDecls(qualifiedName, archetype, classDecls);
-            mergedStmts.push(babel.exportNamedDeclaration(mergedClassDecl, []));
-            if (archetype === 'ActiveRecord' || archetype === 'Gateway') {
-                services = listServices(archetype, mergedClassDecl);
-            }
+        }
+        const mergedClassDecl = mergeClassDecls(qualifiedName, archetype, classDecls);
+        mergedStmts.push(babel.exportNamedDeclaration(mergedClassDecl, []));
+        if (archetype === 'ActiveRecord' || archetype === 'Gateway') {
+            services = listServices(archetype, mergedClassDecl);
         }
     }
     const merged = babel.file(babel.program(mergedStmts, undefined, 'module'));
@@ -180,7 +180,7 @@ async function locateSrcFiles(packages: { name: string; path: string }[], qualif
 
 function mergeClassDecls(
     qualifiedName: string,
-    archetype: Archetype,
+    archetype: Archetype | undefined,
     classDecls: babel.ClassDeclaration[],
 ): babel.ClassDeclaration {
     const methods = new Map<string, babel.ClassMethod>();

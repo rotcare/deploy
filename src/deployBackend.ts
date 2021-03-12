@@ -58,6 +58,7 @@ export async function deployBackend(cloud: Cloud, project: Project) {
         return;
     }
     await cloud.serverless.createSharedLayer(result.outputFiles![0].text);
+    await cloud.serverless.createFunction('migrate');
     for (const model of listBuiltModels()) {
         for (const service of model.services) {
             await cloud.serverless.createFunction(service);
@@ -71,6 +72,7 @@ export async function deployBackend(cloud: Cloud, project: Project) {
     await cloud.apiGateway.reload({
         projectPackageName: project.projectPackageName,
     });
+    await cloud.serverless.invokeFunction('migrate');
 }
 
 // watch fs and dump bakcend services into serverlessFunctions.js
@@ -81,7 +83,8 @@ const { Impl, Scene } = require('@rotcare/io');
 SERVERLESS.ioConf = {
     database: new Impl.InMemDatabase(),
     serviceProtocol: undefined,
-};`,
+};
+SERVERLESS.functions.migrate = new Impl.HttpRpcServer(SERVERLESS, () => import('@motherboard/Migrate'), 'Migrate', 'migrate').handler;`,
     ];
     for (const qualifiedName of listBackendQualifiedNames(project)) {
         lines.push(`require('@motherboard/${qualifiedName}');`);
