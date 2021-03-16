@@ -1,5 +1,5 @@
 import * as babel from '@babel/types';
-import { Model } from '@rotcare/codegen';
+import { Model, use } from '@rotcare/codegen';
 import { Project } from '../Project';
 import generate from '@babel/generator';
 import { parse } from '@babel/parser';
@@ -70,10 +70,11 @@ export function expandCodegen(
     }
     const code = generate(arrowFuncAst.body).code;
     const dir = path.dirname((stmt.loc as any).filename);
+    (global as any).use = use;
     (global as any).requireAbs = (pkg: string) => {
         return require(path.join(dir, pkg));
     }
-    const arrowFunc = new Function(...argNames, `const require=requireAbs; ${code}`);
+    const arrowFunc = new Function(...argNames, code.replace(/import\(/g, 'requireAbs('));
     const generatedCode = arrowFunc.apply(undefined, argValues);
     const exportAs = (stmt.declaration.declarations[0].id as babel.Identifier).name;
     const generatedAst = parse(`export const ${exportAs} = ${generatedCode}`, {
