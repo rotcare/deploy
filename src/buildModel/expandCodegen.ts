@@ -68,16 +68,17 @@ export function expandCodegen(
         argNames.push(arg.name);
         argValues.push(model);
     }
-    const code = generate(arrowFuncAst.body).code;
     const dir = path.dirname((stmt.loc as any).filename);
     (global as any).use = use;
     (global as any).requireAbs = (pkg: string) => {
         return require(path.join(dir, pkg));
     }
-    const arrowFunc = new Function(...argNames, code.replace(/import\(/g, 'requireAbs('));
+    let code = generate(arrowFuncAst.body).code;
+    code = code.replace(/import\(/g, 'requireAbs(');
+    const arrowFunc = new Function(...argNames, code);
     const generatedCode = arrowFunc.apply(undefined, argValues);
     const exportAs = (stmt.declaration.declarations[0].id as babel.Identifier).name;
-    const generatedAst = parse(`export const ${exportAs} = ${generatedCode}`, {
+    const generatedAst = parse(`export const ${exportAs} = (() => {${generatedCode}})()`, {
         plugins: [
             'typescript',
             'jsx',

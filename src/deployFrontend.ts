@@ -19,7 +19,7 @@ export async function deployFrontend(cloud: Cloud, project: Project) {
             sourcemap: 'inline',
             keepNames: true,
             bundle: true,
-            entryPoints: ['frontend.js'],
+            entryPoints: ['@motherboard/frontend'],
             write: false,
             platform: 'browser',
             target: 'es2020',
@@ -28,7 +28,6 @@ export async function deployFrontend(cloud: Cloud, project: Project) {
             plugins: [esbuildPlugin(project)],
             incremental: true,
         }) as Promise<esbuild.BuildIncremental>);
-        project.subscribePath(path.join(project.projectDir, 'frontend.js'));
     }
     const htmlPath = path.join(project.projectDir, 'index.html');
     project.subscribePath(htmlPath);
