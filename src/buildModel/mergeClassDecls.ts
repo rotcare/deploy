@@ -1,14 +1,20 @@
-import { Archetype, ModelProperty } from '@rotcare/codegen';
+import { Archetype, ModelMethod, ModelProperty } from '@rotcare/codegen';
 import * as babel from '@babel/types';
 import * as path from 'path';
 import generate from '@babel/generator';
 
-export function mergeClassDecls(
-    qualifiedName: string,
-    archetype: Archetype | undefined,
-    classDecls: babel.ClassDeclaration[],
-    properties: ModelProperty[],
-): babel.ClassDeclaration {
+export function mergeClassDecls(options: {
+    qualifiedName: string;
+    archetype: Archetype | undefined;
+    classDecls: babel.ClassDeclaration[];
+    model: {
+        properties: ModelProperty[];
+        staticProperties: ModelProperty[];
+        methods: ModelMethod[],
+        staticMethods: ModelMethod[]
+    }
+}): babel.ClassDeclaration {
+    const { qualifiedName, archetype, classDecls, model } = options;
     const methods = new Map<string, babel.ClassMethod>();
     const others = [];
     if (archetype === 'ActiveRecord') {
@@ -26,18 +32,7 @@ export function mergeClassDecls(
     }
     for (const classDecl of classDecls) {
         for (const member of classDecl.body.body) {
-            if (!babel.isClassMethod(member)) {
-                if (babel.isClassProperty(member) && babel.isIdentifier(member.key) && babel.isTSTypeAnnotation(member.typeAnnotation)) {
-                    properties.push({
-                        name: member.key.name,
-                        type: generate(member.typeAnnotation.typeAnnotation).code,
-                        readonly: !!member.readonly,
-                    });
-                }
-                others.push(member);
-                continue;
-            }
-            if (babel.isIdentifier(member.key)) {
+            if (babel.isClassMethod(member) && babel.isIdentifier(member.key)) {
                 const baseMethod = methods.get(member.key.name);
                 if (baseMethod) {
                     if (!hasVirtualTag(baseMethod)) {
@@ -52,9 +47,35 @@ export function mergeClassDecls(
                     }
                 }
                 methods.set(member.key.name, { ...member, decorators: [] });
-            } else {
-                others.push(member);
+                if (member.static) {
+                    model.staticMethods.push({
+                        name: member.key.name,
+                        paramters: member.params.map(p => {
+                            // TODO
+                            return { name: '', type: '' }
+                        })
+                    })
+                }
+                continue;
+            } else if (
+                babel.isClassProperty(member) &&
+                babel.isIdentifier(member.key) &&
+                member.accessibility === 'public'
+            ) {
+                const prop = {
+                    name: member.key.name,
+                    type: babel.isTSTypeAnnotation(member.typeAnnotation)
+                        ? generate(member.typeAnnotation.typeAnnotation).code
+                        : undefined,
+                    readonly: !!member.readonly,
+                };
+                if (member.static) {
+                    model.staticProperties.push(prop);
+                } else {
+                    model.properties.push(prop);
+                }
             }
+            others.push(member);
         }
     }
     return {

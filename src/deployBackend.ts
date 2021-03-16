@@ -1,60 +1,33 @@
 import { Cloud } from '@rotcare/cloud';
 import * as esbuild from 'esbuild';
-import { esbuildPlugin, listBuiltModels } from './buildModel/buildModel';
+import { buildModel, esbuildPlugin, listBuiltModels } from './buildModel/buildModel';
 import { Project } from './Project';
 import * as path from 'path';
 import * as fs from 'fs';
 
 let result: esbuild.BuildIncremental;
-let backendJs = '';
 
 export async function deployBackend(cloud: Cloud, project: Project) {
-    if (!backendJs) {
-        backendJs = generateBackend(project);
-    }
     if (result) {
         result = await result.rebuild();
     } else {
+        const promises = [];
+        for (const qualifiedName of listBackendQualifiedNames(project)) {
+            promises.push(buildModel(project, qualifiedName));
+        }
+        await Promise.all(promises);
         result = await (esbuild.build({
             sourcemap: 'inline',
             keepNames: true,
             bundle: true,
-            stdin: {
-                contents: `require('@backend');`,
-            },
+            entryPoints: ['@motherboard/backend'],
             platform: 'node',
             format: 'cjs',
             write: false,
             absWorkingDir: project.projectDir,
-            plugins: [
-                esbuildPlugin(project),
-                {
-                    name: '@backend provider',
-                    setup: (build) => {
-                        build.onResolve({ filter: /^@backend/ }, (args) => {
-                            return { path: args.path, namespace: '@backend' };
-                        });
-                        build.onLoad(
-                            { namespace: '@backend', filter: /^@backend/ },
-                            async (args) => {
-                                return {
-                                    resolveDir: project.projectDir,
-                                    contents: backendJs,
-                                    loader: 'js',
-                                };
-                            },
-                        );
-                    },
-                },
-            ],
+            plugins: [esbuildPlugin(project)],
             incremental: true,
         }) as Promise<esbuild.BuildIncremental>);
-        return;
-    }
-    const newBackendJs = generateBackend(project);
-    if (newBackendJs !== backendJs) {
-        backendJs = newBackendJs;
-        project.onChange('@backend');
         return;
     }
     await cloud.serverless.createSharedLayer(result.outputFiles![0].text);
@@ -73,37 +46,6 @@ export async function deployBackend(cloud: Cloud, project: Project) {
         projectPackageName: project.projectPackageName,
     });
     await cloud.serverless.invokeFunction('migrate');
-}
-
-// watch fs and dump bakcend services into serverlessFunctions.js
-function generateBackend(project: Project) {
-    const lines = [
-        `
-const { Impl, Scene } = require('@rotcare/io');
-SERVERLESS.ioConf = {
-    database: new Impl.InMemDatabase(),
-    serviceProtocol: undefined,
-};
-SERVERLESS.functions.migrate = new Impl.HttpRpcServer(SERVERLESS, () => import('@motherboard/Migrate'), 'Migrate', 'migrate').handler;`,
-    ];
-    for (const qualifiedName of listBackendQualifiedNames(project)) {
-        lines.push(`require('@motherboard/${qualifiedName}');`);
-    }
-    const models = listBuiltModels();
-    models.sort((a, b) => a.qualifiedName.localeCompare(b.qualifiedName));
-    for (const model of models) {
-        for (const service of model.services) {
-            const className = path.basename(model.qualifiedName);
-            lines.push(
-                [
-                    `SERVERLESS.functions.${service} = new Impl.HttpRpcServer(SERVERLESS, `,
-                    `() => import('@motherboard/${model.qualifiedName}'), `,
-                    `'${className}', '${service}').handler;`,
-                ].join(''),
-            );
-        }
-    }
-    return lines.join('\n');
 }
 
 function listBackendQualifiedNames(project: Project) {

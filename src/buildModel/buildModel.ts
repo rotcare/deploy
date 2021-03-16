@@ -6,7 +6,7 @@ import * as babel from '@babel/types';
 import generate from '@babel/generator';
 import { fromObject } from 'convert-source-map';
 import { Project } from '../Project';
-import { Archetype, Model, ModelProperty } from '@rotcare/codegen';
+import { Archetype, Model, ModelMethod, ModelProperty } from '@rotcare/codegen';
 import * as esbuild from 'esbuild';
 import { mergeClassDecls } from './mergeClassDecls';
 import { mergeImports } from './mergeImports';
@@ -21,8 +21,6 @@ export interface ModelCache extends Model {
     hash: number;
     isTsx: boolean;
     resolveDir: string;
-    // TODO: remove this
-    services: string[];
 }
 
 interface SrcFile {
@@ -89,24 +87,27 @@ export async function buildModel(project: Project, qualifiedName: string) {
     for (const other of others) {
         try {
             mergedStmts.push(expandCodegen(project, other, symbols, cache));
-        } catch(e) {
+        } catch (e) {
             console.error('failed to generate code', e);
             mergedStmts.push(other);
         }
     }
     let archetype: Archetype | undefined;
-    // TODO: remove this, use codegen instead
-    let services: string[] = [];
     const properties: ModelProperty[] = [];
+    const staticProperties: ModelProperty[] = [];
+    const methods: ModelMethod[] = [];
+    const staticMethods: ModelMethod[] = [];
     if (classDecls.length > 0) {
         if (babel.isIdentifier(classDecls[0].superClass)) {
             archetype = classDecls[0].superClass.name as Archetype;
         }
-        const mergedClassDecl = mergeClassDecls(qualifiedName, archetype, classDecls, properties);
+        const mergedClassDecl = mergeClassDecls({
+            qualifiedName,
+            archetype,
+            classDecls,
+            model: { properties, staticProperties, methods, staticMethods },
+        });
         mergedStmts.push(babel.exportNamedDeclaration(mergedClassDecl, []));
-        if (archetype === 'ActiveRecord' || archetype === 'Gateway') {
-            services = listServices(archetype, mergedClassDecl);
-        }
     }
     const merged = babel.file(babel.program(mergedStmts, undefined, 'module'));
     const { code, map } = generate(merged, { sourceMaps: true });
@@ -130,9 +131,10 @@ export async function buildModel(project: Project, qualifiedName: string) {
         isTsx,
         resolveDir,
         archetype: archetype!,
-        services,
         properties,
-        methods: []
+        staticProperties,
+        methods,
+        staticMethods,
     };
     cache.set(qualifiedName, model);
     return model;
@@ -140,33 +142,6 @@ export async function buildModel(project: Project, qualifiedName: string) {
 
 export function listBuiltModels() {
     return Array.from(cache.values());
-}
-
-function listServices(archetype: Archetype, classDecl: babel.ClassDeclaration) {
-    const hasService = archetype === 'Gateway' || archetype === 'ActiveRecord';
-    if (!hasService) {
-        return [];
-    }
-    const services = [];
-    for (const member of classDecl.body.body) {
-        if (
-            babel.isClassMethod(member) &&
-            babel.isIdentifier(member.key) &&
-            member.static &&
-            member.accessibility === 'public'
-        ) {
-            services.push(member.key.name);
-        }
-        if (
-            babel.isClassProperty(member) &&
-            babel.isIdentifier(member.key) &&
-            member.static &&
-            member.accessibility === 'public'
-        ) {
-            services.push(member.key.name);
-        }
-    }
-    return services;
 }
 
 async function locateSrcFiles(packages: { name: string; path: string }[], qualifiedName: string) {
