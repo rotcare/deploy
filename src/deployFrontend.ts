@@ -3,7 +3,7 @@ import * as esbuild from 'esbuild';
 import * as fs from 'fs';
 import { promisify } from 'util';
 import * as path from 'path';
-import { esbuildPlugin } from './buildModel';
+import { esbuildPlugin } from './buildModel/buildModel';
 import { Project } from './Project';
 
 const readFile = promisify(fs.readFile);

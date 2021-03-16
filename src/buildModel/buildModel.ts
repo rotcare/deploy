@@ -5,21 +5,24 @@ import { parse } from '@babel/parser';
 import * as babel from '@babel/types';
 import generate from '@babel/generator';
 import { fromObject } from 'convert-source-map';
-import { Project } from './Project';
+import { Project } from '../Project';
+import { Archetype, Model, ModelProperty } from '@rotcare/codegen';
 import * as esbuild from 'esbuild';
+import { mergeClassDecls } from './mergeClassDecls';
+import { mergeImports } from './mergeImports';
+import { expandCodegen } from './expandCodegen';
 
 const lstat = promisify(fs.lstat);
 const readFile = promisify(fs.readFile);
-const cache = new Map<string, Model>();
+const cache = new Map<string, ModelCache>();
 
-export interface Model {
-    qualifiedName: string;
+export interface ModelCache extends Model {
     code: string;
     hash: number;
     isTsx: boolean;
     resolveDir: string;
+    // TODO: remove this
     services: string[];
-    archetype?: Archetype;
 }
 
 interface SrcFile {
@@ -27,8 +30,6 @@ interface SrcFile {
     fileName: string;
     content: string;
 }
-
-export type Archetype = 'Gateway' | 'ActiveRecord' | 'Widget' | 'Command';
 
 // @motherboard 开头的路径都是由这个 esbuildPlugin 虚构出来的
 // 其源代码来自于 project 的多个 packages 合并而来
@@ -83,14 +84,25 @@ export async function buildModel(project: Project, qualifiedName: string) {
         });
         extractStatements(className, ast, { imports, others, classDecls });
     }
-    const mergedStmts = [...mergeImports(project, qualifiedName, imports), ...others];
+    const symbols = new Map<string, string>();
+    const mergedStmts: babel.Statement[] = mergeImports(qualifiedName, imports, symbols);
+    for (const other of others) {
+        try {
+            mergedStmts.push(expandCodegen(project, other, symbols, cache));
+        } catch(e) {
+            console.error('failed to generate code', e);
+            mergedStmts.push(other);
+        }
+    }
     let archetype: Archetype | undefined;
+    // TODO: remove this, use codegen instead
     let services: string[] = [];
+    const properties: ModelProperty[] = [];
     if (classDecls.length > 0) {
         if (babel.isIdentifier(classDecls[0].superClass)) {
             archetype = classDecls[0].superClass.name as Archetype;
         }
-        const mergedClassDecl = mergeClassDecls(qualifiedName, archetype, classDecls);
+        const mergedClassDecl = mergeClassDecls(qualifiedName, archetype, classDecls, properties);
         mergedStmts.push(babel.exportNamedDeclaration(mergedClassDecl, []));
         if (archetype === 'ActiveRecord' || archetype === 'Gateway') {
             services = listServices(archetype, mergedClassDecl);
@@ -117,8 +129,10 @@ export async function buildModel(project: Project, qualifiedName: string) {
         hash,
         isTsx,
         resolveDir,
-        archetype,
+        archetype: archetype!,
         services,
+        properties,
+        methods: []
     };
     cache.set(qualifiedName, model);
     return model;
@@ -176,104 +190,6 @@ async function locateSrcFiles(packages: { name: string; path: string }[], qualif
         }
     }
     return { hash, srcFiles, resolveDir } as const;
-}
-
-function mergeClassDecls(
-    qualifiedName: string,
-    archetype: Archetype | undefined,
-    classDecls: babel.ClassDeclaration[],
-): babel.ClassDeclaration {
-    const methods = new Map<string, babel.ClassMethod>();
-    const others = [];
-    if (archetype === 'ActiveRecord') {
-        const tableName = path.basename(qualifiedName);
-        others.push(
-            babel.classProperty(
-                babel.identifier('tableName'),
-                babel.stringLiteral(tableName),
-                undefined,
-                undefined,
-                false,
-                true,
-            ),
-        );
-    }
-    for (const classDecl of classDecls) {
-        for (const member of classDecl.body.body) {
-            if (!babel.isClassMethod(member)) {
-                others.push(member);
-                continue;
-            }
-            if (babel.isIdentifier(member.key)) {
-                const baseMethod = methods.get(member.key.name);
-                if (baseMethod) {
-                    if (!hasVirtualTag(baseMethod)) {
-                        throw new Error(`must use @virtual tsdoc comment to mark a method as interface: ${member.key.name}`);
-                    }
-                    if (!hasOverrideTag(member)) {
-                        throw new Error(`must use @override tsdoc comment to implement virtual method: ${member.key.name}`);
-                    }
-                }
-                methods.set(member.key.name, { ...member, decorators: [] });
-            } else {
-                others.push(member);
-            }
-        }
-    }
-    return {
-        ...classDecls[0],
-        body: { ...classDecls[0].body, body: [...others, ...methods.values()] },
-    };
-}
-
-function hasOverrideTag(method: babel.ClassMethod) {
-    if (!method.leadingComments) {
-        return false;
-    }
-    for (const comment of method.leadingComments) {
-        if (comment.value.includes('@override')) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function hasVirtualTag(method: babel.ClassMethod) {
-    if (!method.leadingComments) {
-        return false;
-    }
-    for (const comment of method.leadingComments) {
-        if (comment.value.includes('@virtual')) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function mergeImports(project: Project, qualifiedName: string, imports: babel.ImportDeclaration[]) {
-    const symbols = new Set<string>();
-    const merged = [];
-    for (const stmt of imports) {
-        const isRelativeImport = stmt.source.value[0] === '.';
-        if (isRelativeImport) {
-            stmt.source.value = `@motherboard/${path.join(
-                path.dirname(qualifiedName),
-                stmt.source.value,
-            )}`;
-        }
-        const specifiers = [];
-        for (const specifier of stmt.specifiers) {
-            if (symbols.has(specifier.local.name)) {
-                continue;
-            }
-            symbols.add(specifier.local.name);
-            specifiers.push(specifier);
-        }
-        if (specifiers.length) {
-            merged.push({ ...stmt, specifiers });
-        }
-    }
-    return merged;
 }
 
 function extractStatements(

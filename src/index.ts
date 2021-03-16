@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { buildModel } from './buildModel';
+import { buildModel } from './buildModel/buildModel';
 import { Project } from './Project';
 import { watch } from './watch';
 

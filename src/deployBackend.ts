@@ -1,6 +1,6 @@
 import { Cloud } from '@rotcare/cloud';
 import * as esbuild from 'esbuild';
-import { esbuildPlugin, listBuiltModels } from './buildModel';
+import { esbuildPlugin, listBuiltModels } from './buildModel/buildModel';
 import { Project } from './Project';
 import * as path from 'path';
 import * as fs from 'fs';
