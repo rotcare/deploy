@@ -86,20 +86,24 @@ export function expandCodegen(
     const arrowFunc = new Function(...argNames, code);
     const generatedCode = arrowFunc.apply(undefined, argValues);
     const exportAs = (stmt.declaration.declarations[0].id as babel.Identifier).name;
-    const generatedAst = parse(`export const ${exportAs} = (() => {${generatedCode}})()`, {
-        plugins: [
-            'typescript',
-            'jsx',
-            'classProperties',
-            ['decorators', { decoratorsBeforeExport: true }],
-        ],
-        sourceType: 'module',
-        sourceFilename: (stmt.loc as any).filename,
-    });
-    if (generatedAst.program.body.length !== 1) {
-        throw new Error('should generate one and only one statement');
+    try {
+        const generatedAst = parse(`export const ${exportAs} = (() => {${generatedCode}})()`, {
+            plugins: [
+                'typescript',
+                'jsx',
+                'classProperties',
+                ['decorators', { decoratorsBeforeExport: true }],
+            ],
+            sourceType: 'module',
+            sourceFilename: (stmt.loc as any).filename,
+        });
+        return generatedAst.program.body[0];
+    } catch(e) {
+        console.error('\n>>> INVALID GENERATED CODE');
+        console.error(generatedCode);
+        console.error('<<< INVALID GENERATED CODE\n');
+        throw new Error(`generated code is invalid: ${e}`);
     }
-    return generatedAst.program.body[0];
 }
 
 function translateImportToRequire(imports: babel.ImportDeclaration[]) {

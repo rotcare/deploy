@@ -26,10 +26,10 @@ function deploy(cloud: Cloud, project: Project, changedFile?: string) {
     changedFiles.length = 0;
     const promises = [
         deployFrontend(cloud, project).catch((e) => {
-            console.error(`deployFrontend failed: ${e}`);
+            console.error(`deployFrontend failed`, e);
         }),
         deployBackend(cloud, project).catch((e) => {
-            console.error(`deployBackend failed: ${e}`);
+            console.error(`deployBackend failed`, e);
         }),
     ];
     deploying = Promise.all(promises);
