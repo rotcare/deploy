@@ -1,6 +1,6 @@
 import { Cloud } from '@rotcare/cloud';
 import * as esbuild from 'esbuild';
-import { buildModel, esbuildPlugin, listBuiltModels } from './buildModel/buildModel';
+import { buildModel, esbuildPlugin } from './buildModel/buildModel';
 import { Project } from './Project';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -30,22 +30,28 @@ export async function deployBackend(cloud: Cloud, project: Project) {
         }) as Promise<esbuild.BuildIncremental>);
         return;
     }
-    await cloud.serverless.createSharedLayer(result.outputFiles![0].text);
+    const bundledCode = result.outputFiles![0].text;
+    await cloud.serverless.createSharedLayer(bundledCode);
     await cloud.serverless.createFunction('migrate');
-    for (const model of listBuiltModels()) {
-        for (const service of model.services) {
-            await cloud.serverless.createFunction(service);
+    for (const functionName of evalToListFunctionNames(bundledCode)) {
+            await cloud.serverless.createFunction(functionName);
             await cloud.apiGateway.createRoute({
-                path: `/${service}`,
+                path: `/${functionName}`,
                 httpMethod: 'POST',
-                functionName: service,
+                functionName,
             });
-        }
     }
     await cloud.apiGateway.reload({
         projectPackageName: project.projectPackageName,
     });
     await cloud.serverless.invokeFunction('migrate');
+}
+
+function evalToListFunctionNames(bundledCode: string) {
+    const functions = {};
+    (global as any).SERVERLESS = { functions };
+    eval(bundledCode);
+    return Object.keys(functions);
 }
 
 function listBackendQualifiedNames(project: Project) {

@@ -1,13 +1,13 @@
 import * as babel from '@babel/types';
-import { Model, use } from '@rotcare/codegen';
+import { Model } from '@rotcare/codegen';
 import { Project } from '../Project';
 import generate from '@babel/generator';
 import { parse } from '@babel/parser';
-import * as path from 'path';
 
 export function expandCodegen(
     project: Project,
     stmt: babel.Statement,
+    imports: babel.ImportDeclaration[],
     symbols: Map<string, string>,
     models: Map<string, Model>,
 ) {
@@ -77,17 +77,12 @@ export function expandCodegen(
             argValues.push(model);
         }
     }
-    const dir = path.dirname((stmt.loc as any).filename);
-    (global as any).use = use;
-    (global as any).requireAbs = (pkg: string) => {
-        if (pkg[0] === '.') {
-            return require(path.join(dir, pkg));
-        } else {
-            return require(pkg);
-        }
+    try {
+        (global.require) = require;
+    } catch(e) {
     }
     let code = generate(arrowFuncAst.body).code;
-    code = code.replace(/use\(import\(/g, 'use(requireAbs(');
+    code = `${translateImportToRequire(imports)}\n${code}`;
     const arrowFunc = new Function(...argNames, code);
     const generatedCode = arrowFunc.apply(undefined, argValues);
     const exportAs = (stmt.declaration.declarations[0].id as babel.Identifier).name;
@@ -105,4 +100,23 @@ export function expandCodegen(
         throw new Error('should generate one and only one statement');
     }
     return generatedAst.program.body[0];
+}
+
+function translateImportToRequire(imports: babel.ImportDeclaration[]) {
+    const lines = [];
+    for (const stmt of imports) {
+        if (stmt.source.value.startsWith('@motherboard/')) {
+            continue;
+        }
+        for (const specifier of stmt.specifiers) {
+            if (babel.isImportDefaultSpecifier(specifier)) {
+                lines.push(`const ${specifier.local.name} = require('${stmt.source.value}').default;`);
+            } else if (babel.isImportNamespaceSpecifier(specifier)) {
+                lines.push(`const ${specifier.local.name} = require('${stmt.source.value}');`);
+            } else {
+                lines.push(`const { ${specifier.local.name} } = require('${stmt.source.value}');`);
+            }
+        }
+    }
+    return lines.join('\n');
 }

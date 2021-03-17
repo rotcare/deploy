@@ -2,7 +2,7 @@ import * as babel from '@babel/types';
 import * as path from 'path';
 
 export function mergeImports(qualifiedName: string, imports: babel.ImportDeclaration[], symbols: Map<string, string>) {
-    const merged = [];
+    const merged: babel.ImportDeclaration[] = [];
     for (const stmt of imports) {
         const isRelativeImport = stmt.source.value[0] === '.';
         if (isRelativeImport) {

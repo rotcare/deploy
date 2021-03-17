@@ -86,9 +86,9 @@ export async function buildModel(project: Project, qualifiedName: string) {
     const mergedStmts: babel.Statement[] = mergeImports(qualifiedName, imports, symbols);
     for (const other of others) {
         try {
-            mergedStmts.push(expandCodegen(project, other, symbols, cache));
+            mergedStmts.push(expandCodegen(project, other, imports, symbols, cache));
         } catch (e) {
-            console.error('failed to generate code', e);
+            console.error(`failed to generate code: ${(other.loc as any).filename}`, e);
             mergedStmts.push(other);
         }
     }
@@ -138,10 +138,6 @@ export async function buildModel(project: Project, qualifiedName: string) {
     };
     cache.set(qualifiedName, model);
     return model;
-}
-
-export function listBuiltModels() {
-    return Array.from(cache.values());
 }
 
 async function locateSrcFiles(packages: { name: string; path: string }[], qualifiedName: string) {
