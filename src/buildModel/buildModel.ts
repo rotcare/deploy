@@ -6,7 +6,7 @@ import * as babel from '@babel/types';
 import generate from '@babel/generator';
 import { fromObject } from 'convert-source-map';
 import { Project } from '../Project';
-import { Archetype, Model, ModelMethod, ModelProperty } from '@rotcare/codegen';
+import { Model, ModelMethod, ModelProperty } from '@rotcare/codegen';
 import * as esbuild from 'esbuild';
 import { mergeClassDecls } from './mergeClassDecls';
 import { mergeImports } from './mergeImports';
@@ -92,18 +92,17 @@ export async function buildModel(project: Project, qualifiedName: string) {
             mergedStmts.push(other);
         }
     }
-    let archetype: Archetype | undefined;
+    let archetype: string | undefined;
     const properties: ModelProperty[] = [];
     const staticProperties: ModelProperty[] = [];
     const methods: ModelMethod[] = [];
     const staticMethods: ModelMethod[] = [];
     if (classDecls.length > 0) {
         if (babel.isIdentifier(classDecls[0].superClass)) {
-            archetype = classDecls[0].superClass.name as Archetype;
+            archetype = classDecls[0].superClass.name;
         }
         const mergedClassDecl = mergeClassDecls({
             qualifiedName,
-            archetype,
             classDecls,
             model: { properties, staticProperties, methods, staticMethods },
         });
@@ -130,7 +129,7 @@ export async function buildModel(project: Project, qualifiedName: string) {
         hash,
         isTsx,
         resolveDir,
-        archetype: archetype!,
+        archetype,
         properties,
         staticProperties,
         methods,

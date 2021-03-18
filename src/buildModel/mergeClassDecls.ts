@@ -1,11 +1,10 @@
-import { Archetype, ModelMethod, ModelProperty } from '@rotcare/codegen';
+import { ModelMethod, ModelProperty } from '@rotcare/codegen';
 import * as babel from '@babel/types';
 import * as path from 'path';
 import generate from '@babel/generator';
 
 export function mergeClassDecls(options: {
     qualifiedName: string;
-    archetype: Archetype | undefined;
     classDecls: babel.ClassDeclaration[];
     model: {
         properties: ModelProperty[];
@@ -14,22 +13,20 @@ export function mergeClassDecls(options: {
         staticMethods: ModelMethod[]
     }
 }): babel.ClassDeclaration {
-    const { qualifiedName, archetype, classDecls, model } = options;
+    const { qualifiedName, classDecls, model } = options;
     const methods = new Map<string, babel.ClassMethod>();
     const others = [];
-    if (archetype === 'ActiveRecord') {
-        const tableName = path.basename(qualifiedName);
-        others.push(
-            babel.classProperty(
-                babel.identifier('tableName'),
-                babel.stringLiteral(tableName),
-                undefined,
-                undefined,
-                false,
-                true,
-            ),
-        );
-    }
+    // 因为代码压缩的时候，类名会被修改。注入 qualifiedName 做为运行时反射用
+    others.push(
+        babel.classProperty(
+            babel.identifier('qualifiedName'),
+            babel.stringLiteral(qualifiedName),
+            undefined,
+            undefined,
+            false,
+            true,
+        ),
+    );
     for (const classDecl of classDecls) {
         for (const member of classDecl.body.body) {
             if (babel.isClassMethod(member) && babel.isIdentifier(member.key)) {
