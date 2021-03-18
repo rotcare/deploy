@@ -35,7 +35,7 @@ function deploy(cloud: Cloud, project: Project, changedFile?: string) {
     deploying = Promise.all(promises);
     deploying.finally(() => {
         deploying = undefined;
-        if (changedFiles.length > 0) {
+        if (changedFiles.length > 0 || project.incompleteModels.size > 0) {
             // some file changed during deploying
             deploy(cloud, project);
         }

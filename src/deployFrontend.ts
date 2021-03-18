@@ -25,7 +25,7 @@ export async function deployFrontend(cloud: Cloud, project: Project) {
             target: 'es2020',
             absWorkingDir: project.projectDir,
             define: { 'process.env.NODE_ENV': `"development"` },
-            plugins: [esbuildPlugin(project)],
+            plugins: [esbuildPlugin({ project })],
             incremental: true,
         }) as Promise<esbuild.BuildIncremental>);
     }

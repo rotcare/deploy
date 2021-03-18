@@ -1,27 +1,14 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { promisify } from 'util';
 import { parse } from '@babel/parser';
 import * as babel from '@babel/types';
 import generate from '@babel/generator';
 import { fromObject } from 'convert-source-map';
 import { Project } from '../Project';
-import { Model, ModelMethod, ModelProperty } from '@rotcare/codegen';
+import { ModelMethod, ModelProperty } from '@rotcare/codegen';
 import * as esbuild from 'esbuild';
 import { mergeClassDecls } from './mergeClassDecls';
-import { mergeImports } from './mergeImports';
 import { expandCodegen } from './expandCodegen';
-
-const lstat = promisify(fs.lstat);
-const readFile = promisify(fs.readFile);
-const cache = new Map<string, ModelCache>();
-
-export interface ModelCache extends Model {
-    code: string;
-    hash: number;
-    isTsx: boolean;
-    resolveDir: string;
-}
 
 interface SrcFile {
     package: string;
@@ -31,7 +18,8 @@ interface SrcFile {
 
 // @motherboard 开头的路径都是由这个 esbuildPlugin 虚构出来的
 // 其源代码来自于 project 的多个 packages 合并而来
-export function esbuildPlugin(project: Project): esbuild.Plugin {
+export function esbuildPlugin(options: { project: Project }): esbuild.Plugin {
+    const { project } = options;
     return {
         name: 'rotcare',
         setup: (build) => {
@@ -44,7 +32,10 @@ export function esbuildPlugin(project: Project): esbuild.Plugin {
                 }
             });
             build.onLoad({ namespace: '@motherboard', filter: /^@motherboard\// }, async (args) => {
-                const model = await buildModel(project, args.path.substr('@motherboard/'.length));
+                const model = buildModel({
+                    project,
+                    qualifiedName: args.path.substr('@motherboard/'.length),
+                });
                 return {
                     resolveDir: model.resolveDir,
                     contents: model.code,
@@ -55,21 +46,26 @@ export function esbuildPlugin(project: Project): esbuild.Plugin {
     };
 }
 
-export async function buildModel(project: Project, qualifiedName: string) {
-    const { hash, srcFiles, resolveDir } = await locateSrcFiles(project.packages, qualifiedName);
+export function buildModel(options: { project: Project; qualifiedName: string }) {
+    const { project, qualifiedName } = options;
+    const { hash, srcFiles, resolveDir } = locateSrcFiles(project.packages, qualifiedName);
     if (srcFiles.size === 0) {
         throw new Error(`referenced ${qualifiedName} not found`);
     }
-    let model = cache.get(qualifiedName);
+    let model = project.models.get(qualifiedName);
     if (model && model.hash === hash) {
-        return model;
+        if (!project.incompleteModels.has(model.qualifiedName)) {
+            return model;
+        }
+        project.incompleteModels.delete(model.qualifiedName);
     }
     const imports: babel.ImportDeclaration[] = [];
-    const others: babel.Statement[] = [];
+    const beforeStmts: babel.Statement[] = [];
     const classDecls: babel.ClassDeclaration[] = [];
+    const afterStmts: babel.Statement[] = [];
     const className = path.basename(qualifiedName);
     for (const [srcFilePath, srcFile] of srcFiles.entries()) {
-        srcFile.content = (await readFile(srcFilePath)).toString();
+        srcFile.content = fs.readFileSync(srcFilePath).toString();
         const ast = parse(srcFile.content, {
             plugins: [
                 'typescript',
@@ -80,16 +76,21 @@ export async function buildModel(project: Project, qualifiedName: string) {
             sourceType: 'module',
             sourceFilename: srcFilePath,
         });
-        extractStatements(className, ast, { imports, others, classDecls });
+        extractStatements(className, ast, { imports, beforeStmts, afterStmts, classDecls });
     }
     const symbols = new Map<string, string>();
-    const mergedStmts: babel.Statement[] = mergeImports(qualifiedName, imports, symbols);
-    for (const other of others) {
+    const mergedStmts: babel.Statement[] = mergeImports({
+        qualifiedName,
+        imports,
+        symbols,
+        project,
+    });
+    for (const stmt of beforeStmts) {
         try {
-            mergedStmts.push(expandCodegen(project, other, imports, symbols, cache));
+            mergedStmts.push(expandCodegen({ project, stmt, imports, symbols, qualifiedName }));
         } catch (e) {
-            console.error(`failed to generate code: ${(other.loc as any).filename}`, e);
-            mergedStmts.push(other);
+            console.error(`failed to generate code: ${(stmt.loc as any).filename}`, e);
+            mergedStmts.push(stmt);
         }
     }
     let archetype: string | undefined;
@@ -107,6 +108,14 @@ export async function buildModel(project: Project, qualifiedName: string) {
             model: { properties, staticProperties, methods, staticMethods },
         });
         mergedStmts.push(babel.exportNamedDeclaration(mergedClassDecl, []));
+    }
+    for (const stmt of afterStmts) {
+        try {
+            mergedStmts.push(expandCodegen({ project, stmt, imports, symbols, qualifiedName }));
+        } catch (e) {
+            console.error(`failed to generate code: ${(stmt.loc as any).filename}`, e);
+            mergedStmts.push(stmt);
+        }
     }
     const merged = babel.file(babel.program(mergedStmts, undefined, 'module'));
     const { code, map } = generate(merged, { sourceMaps: true });
@@ -135,11 +144,44 @@ export async function buildModel(project: Project, qualifiedName: string) {
         methods,
         staticMethods,
     };
-    cache.set(qualifiedName, model);
+    project.models.set(qualifiedName, model);
     return model;
 }
 
-async function locateSrcFiles(packages: { name: string; path: string }[], qualifiedName: string) {
+function mergeImports(options: {
+    project: Project;
+    qualifiedName: string;
+    imports: babel.ImportDeclaration[];
+    symbols: Map<string, string>;
+}) {
+    const { project, qualifiedName, imports, symbols } = options;
+    const merged: babel.ImportDeclaration[] = [];
+    for (const stmt of imports) {
+        // 通过替换了 import 路径，使得被 import 的文件仍然会交给这个插件来处理
+        const isRelativeImport = stmt.source.value[0] === '.';
+        if (isRelativeImport) {
+            const importQualifiedName = path.join(path.dirname(qualifiedName), stmt.source.value);
+            if (!project.models.has(importQualifiedName)) {
+                project.incompleteModels.add(importQualifiedName);
+            }
+            stmt.source.value = `@motherboard/${importQualifiedName}`;
+        }
+        const specifiers = [];
+        for (const specifier of stmt.specifiers) {
+            if (symbols.has(specifier.local.name)) {
+                continue;
+            }
+            symbols.set(specifier.local.name, stmt.source.value);
+            specifiers.push(specifier);
+        }
+        if (specifiers.length) {
+            merged.push({ ...stmt, specifiers });
+        }
+    }
+    return merged;
+}
+
+function locateSrcFiles(packages: { name: string; path: string }[], qualifiedName: string) {
     const srcFiles = new Map<string, SrcFile>();
     let hash = 0;
     let resolveDir = '';
@@ -148,7 +190,7 @@ async function locateSrcFiles(packages: { name: string; path: string }[], qualif
             const fileName = `${qualifiedName}${ext}`;
             const filePath = path.join(pkg.path, 'src', fileName);
             try {
-                const stat = await lstat(filePath);
+                const stat = fs.lstatSync(filePath);
                 hash += stat.mtimeMs;
                 srcFiles.set(filePath, { package: pkg.name, fileName, content: '' });
                 if (!resolveDir) {
@@ -167,24 +209,28 @@ function extractStatements(
     ast: babel.File,
     extractTo: {
         imports: babel.ImportDeclaration[];
-        others: babel.Statement[];
+        beforeStmts: babel.Statement[];
+        afterStmts: babel.Statement[];
         classDecls: babel.ClassDeclaration[];
     },
 ) {
+    let found = false;
     for (const stmt of ast.program.body) {
         if (babel.isImportDeclaration(stmt)) {
             extractTo.imports.push(stmt);
-        } else if (babel.isExportNamedDeclaration(stmt)) {
-            if (
-                babel.isClassDeclaration(stmt.declaration) &&
-                stmt.declaration.id.name === className
-            ) {
-                extractTo.classDecls.push(stmt.declaration);
-            } else {
-                extractTo.others.push(stmt);
-            }
+        } else if (
+            babel.isExportNamedDeclaration(stmt) &&
+            babel.isClassDeclaration(stmt.declaration) &&
+            stmt.declaration.id.name === className
+        ) {
+            found = true;
+            extractTo.classDecls.push(stmt.declaration);
         } else {
-            extractTo.others.push(stmt);
+            if (found) {
+                extractTo.afterStmts.push(stmt);
+            } else {
+                extractTo.beforeStmts.push(stmt);
+            }
         }
     }
 }

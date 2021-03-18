@@ -1,16 +1,27 @@
 import * as path from 'path';
 import * as chokidar from 'chokidar';
+import * as fs from 'fs';
+import { Model } from '@rotcare/codegen';
+
+export interface BuildingModel extends Model {
+    code: string;
+    hash: number;
+    isTsx: boolean;
+    resolveDir: string;
+}
 
 export class Project {
     public readonly packages: { path: string; name: string }[] = [];
+    public readonly models = new Map<string, BuildingModel>();
+    public readonly incompleteModels = new Set<string>();
     private readonly knownPackageNames = new Set<string>();
     public readonly projectPackageName: string;
     public readonly projectDir: string;
     public subscribePath = (filePath: string): void => {};
-    public onChange: (filePath?: string) => void;
 
     constructor(relProjectDir: string) {
-        this.projectDir = path.join(process.cwd(), relProjectDir || '.');
+        relProjectDir = relProjectDir || '.';
+        this.projectDir = path.resolve(process.cwd(), relProjectDir);
         let packageJson: any;
         try {
             packageJson = require(`${this.projectDir}/package.json`);
@@ -26,7 +37,7 @@ export class Project {
                         path: path.dirname(require.resolve(`${pkg}/package.json`)),
                         name: pkg,
                     });
-                } catch(e) {
+                } catch (e) {
                     throw e;
                 }
             }
@@ -36,7 +47,6 @@ export class Project {
     }
 
     public startWatcher(onChange: (filePath?: string) => void) {
-        this.onChange = onChange;
         const watcher = new chokidar.FSWatcher();
         watcher.on('all', (eventName, filePath) => onChange(filePath));
         this.subscribePath = watcher.add.bind(watcher);
@@ -53,6 +63,36 @@ export class Project {
             this.subscribePath(path.dirname(pkgJsonPath));
         } catch (e) {
             // ignore
+        }
+    }
+
+    public listQualifiedNames(): string[] {
+        const srcDir = path.join(this.projectDir, 'src');
+        const qualifiedNames = new Set<string>();
+        for (const srcFile of walk(srcDir)) {
+            const relPath = path.relative(srcDir, srcFile);
+            const dotPos = relPath.indexOf('.');
+            const qualifiedName = relPath.substr(0, dotPos);
+            if (qualifiedName.includes('/Private/') || qualifiedName.includes('/Public/')) {
+                qualifiedNames.add(qualifiedName);
+            }
+        }
+        return Array.from(qualifiedNames);
+    }
+}
+
+function* walk(filePath: string): Generator<string> {
+    try {
+        for (const dirent of fs.readdirSync(filePath)) {
+            if (dirent.startsWith('.')) {
+                continue;
+            }
+            yield* walk(path.join(filePath, dirent));
+        }
+    } catch (e) {
+        const ext = path.extname(filePath);
+        if (ext === '.tsx' || ext === '.ts') {
+            yield filePath;
         }
     }
 }

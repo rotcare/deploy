@@ -1,23 +1,25 @@
 import * as babel from '@babel/types';
-import { Model } from '@rotcare/codegen';
-import { Project } from '../Project';
 import generate from '@babel/generator';
 import { parse } from '@babel/parser';
+import { Project } from '../Project';
 
-export function expandCodegen(
+export function expandCodegen(options: {
+    stmt: babel.Statement;
+    imports: babel.ImportDeclaration[];
+    symbols: Map<string, string>;
     project: Project,
-    stmt: babel.Statement,
-    imports: babel.ImportDeclaration[],
-    symbols: Map<string, string>,
-    models: Map<string, Model>,
-) {
-    if (!babel.isExportNamedDeclaration(stmt)) {
+    qualifiedName: string
+}) {
+    const { project, qualifiedName, stmt, imports, symbols } = options;
+    let decl: babel.VariableDeclaration;
+    if (babel.isExportNamedDeclaration(stmt) && babel.isVariableDeclaration(stmt.declaration)) {
+        decl = stmt.declaration;
+    } else if (babel.isVariableDeclaration(stmt)) {
+        decl = stmt;
+    } else {
         return stmt;
     }
-    if (!babel.isVariableDeclaration(stmt.declaration)) {
-        return stmt;
-    }
-    const callExpr = stmt.declaration.declarations[0].init;
+    const callExpr = decl.declarations[0].init;
     if (!babel.isCallExpression(callExpr)) {
         return stmt;
     }
@@ -31,13 +33,14 @@ export function expandCodegen(
     }
     const argNames = [];
     const argValues = [];
+    let isIncomplete = false;
     if (babel.isRestElement(arrowFuncAst.params[0])) {
-        const restElement = arrowFuncAst.params[0]
+        const restElement = arrowFuncAst.params[0];
         if (!babel.isIdentifier(restElement.argument)) {
-            throw new Error('expect identifier')
+            throw new Error('expect identifier');
         }
         argNames.push(restElement.argument.name);
-        argValues.push(Array.from(models.values()));
+        argValues.push(Array.from(project.models.values()));
     } else {
         for (const arg of arrowFuncAst.params) {
             if (!babel.isIdentifier(arg)) {
@@ -67,25 +70,28 @@ export function expandCodegen(
             if (!importedFrom.startsWith('@motherboard/')) {
                 throw new Error(`Model<T> must reference model class as T`);
             }
-            const qualifiedName = importedFrom.substr('@motherboard/'.length);
-            const model = models.get(qualifiedName);
+            const importQualifiedName = importedFrom.substr('@motherboard/'.length);
+            const model = project.models.get(importQualifiedName);
             if (!model) {
-                // TODO: mark build as incomplete
-                return stmt;
+                project.incompleteModels.add(importQualifiedName);
+                isIncomplete = true;
             }
             argNames.push(arg.name);
             argValues.push(model);
         }
     }
-    try {
-        (global.require) = require;
-    } catch(e) {
+    if (isIncomplete) {
+        project.incompleteModels.add(qualifiedName);
+        return stmt;
     }
+    try {
+        global.require = require;
+    } catch (e) {}
     let code = generate(arrowFuncAst.body).code;
     code = `${translateImportToRequire(imports)}\n${code}`;
     const arrowFunc = new Function(...argNames, code);
     const generatedCode = arrowFunc.apply(undefined, argValues);
-    const exportAs = (stmt.declaration.declarations[0].id as babel.Identifier).name;
+    const exportAs = (decl.declarations[0].id as babel.Identifier).name;
     try {
         const generatedAst = parse(`export const ${exportAs} = (() => {${generatedCode}})()`, {
             plugins: [
@@ -98,7 +104,7 @@ export function expandCodegen(
             sourceFilename: (stmt.loc as any).filename,
         });
         return generatedAst.program.body[0];
-    } catch(e) {
+    } catch (e) {
         console.error('\n>>> INVALID GENERATED CODE');
         console.error(generatedCode);
         console.error('<<< INVALID GENERATED CODE\n');
@@ -114,7 +120,9 @@ function translateImportToRequire(imports: babel.ImportDeclaration[]) {
         }
         for (const specifier of stmt.specifiers) {
             if (babel.isImportDefaultSpecifier(specifier)) {
-                lines.push(`const ${specifier.local.name} = require('${stmt.source.value}').default;`);
+                lines.push(
+                    `const ${specifier.local.name} = require('${stmt.source.value}').default;`,
+                );
             } else if (babel.isImportNamespaceSpecifier(specifier)) {
                 lines.push(`const ${specifier.local.name} = require('${stmt.source.value}');`);
             } else {
