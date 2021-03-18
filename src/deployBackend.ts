@@ -32,10 +32,10 @@ export async function deployBackend(cloud: Cloud, project: Project) {
         }) as Promise<esbuild.BuildIncremental>);
     }
     if (project.incompleteModels.size > 0) {
+        project.incompleteModels.add('backend');
         return;
     }
     const bundledCode = result.outputFiles![0].text;
-    fs.writeFileSync('/tmp/test.js', bundledCode);
     await cloud.serverless.createSharedLayer(bundledCode);
     const functionNames = evalToListFunctionNames(bundledCode);
     for (const functionName of functionNames) {

@@ -9,6 +9,10 @@ import { ModelMethod, ModelProperty } from '@rotcare/codegen';
 import * as esbuild from 'esbuild';
 import { mergeClassDecls } from './mergeClassDecls';
 import { expandCodegen } from './expandCodegen';
+import { promisify } from 'util';
+
+const lstat = promisify(fs.lstat);
+const readFile = promisify(fs.readFile);
 
 interface SrcFile {
     package: string;
@@ -32,7 +36,7 @@ export function esbuildPlugin(options: { project: Project }): esbuild.Plugin {
                 }
             });
             build.onLoad({ namespace: '@motherboard', filter: /^@motherboard\// }, async (args) => {
-                const model = buildModel({
+                const model = await buildModel({
                     project,
                     qualifiedName: args.path.substr('@motherboard/'.length),
                 });
@@ -46,9 +50,9 @@ export function esbuildPlugin(options: { project: Project }): esbuild.Plugin {
     };
 }
 
-export function buildModel(options: { project: Project; qualifiedName: string }) {
+export async function buildModel(options: { project: Project; qualifiedName: string }) {
     const { project, qualifiedName } = options;
-    const { hash, srcFiles, resolveDir } = locateSrcFiles(project.packages, qualifiedName);
+    const { hash, srcFiles, resolveDir } = await locateSrcFiles(project.packages, qualifiedName);
     if (srcFiles.size === 0) {
         throw new Error(`referenced ${qualifiedName} not found`);
     }
@@ -65,7 +69,7 @@ export function buildModel(options: { project: Project; qualifiedName: string })
     const afterStmts: babel.Statement[] = [];
     const className = path.basename(qualifiedName);
     for (const [srcFilePath, srcFile] of srcFiles.entries()) {
-        srcFile.content = fs.readFileSync(srcFilePath).toString();
+        srcFile.content = (await readFile(srcFilePath)).toString();
         const ast = parse(srcFile.content, {
             plugins: [
                 'typescript',
@@ -181,7 +185,7 @@ function mergeImports(options: {
     return merged;
 }
 
-function locateSrcFiles(packages: { name: string; path: string }[], qualifiedName: string) {
+async function locateSrcFiles(packages: { name: string; path: string }[], qualifiedName: string) {
     const srcFiles = new Map<string, SrcFile>();
     let hash = 0;
     let resolveDir = '';
@@ -190,7 +194,7 @@ function locateSrcFiles(packages: { name: string; path: string }[], qualifiedNam
             const fileName = `${qualifiedName}${ext}`;
             const filePath = path.join(pkg.path, 'src', fileName);
             try {
-                const stat = fs.lstatSync(filePath);
+                const stat = await lstat(filePath);
                 hash += stat.mtimeMs;
                 srcFiles.set(filePath, { package: pkg.name, fileName, content: '' });
                 if (!resolveDir) {
