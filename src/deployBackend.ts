@@ -8,7 +8,7 @@ import * as vm from 'vm';
 let result: esbuild.BuildIncremental;
 
 export async function deployBackend(cloud: Cloud, project: Project) {
-    if (!fs.existsSync(path.join(project.projectDir, 'src/backend.ts'))) {
+    if (!fs.existsSync(path.join(project.projectDir, 'backend.ts'))) {
         return;
     }
     if (result) {
