@@ -1,3 +1,3 @@
 #!/usr/bin/env node
 
-require('@rotcare/deploy').watch(process.cwd());
+require('@rotcare/deploy').deploy(process.argv[2]);

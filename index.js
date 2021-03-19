@@ -1,3 +1,3 @@
 require('ts-eager/register');
 
-Object.assign(exports, require('./src/watch'));
+Object.assign(exports, require('./src/deploy'));
