@@ -42,11 +42,15 @@ export function register() {
             if (filename.startsWith('@motherboard/')) {
                 const qualifiedName = filename.replace('.ts', '').substr('@motherboard/'.length);
                 if (!cache[qualifiedName]) {
-                    const data = JSON.parse(
-                        childProcess
-                            .execSync(`rotcare build --json ${projectDir} ${qualifiedName}`)
-                            .toString(),
-                    );
+                    const ret = childProcess
+                        .spawnSync(process.argv0, [
+                            `${__dirname}/../bin/rotcare.js`,
+                            'build',
+                            '--json',
+                            projectDir,
+                            qualifiedName,
+                        ]).stdout.toString();
+                    const data = JSON.parse(ret);
                     Object.assign(cache, data);
                 }
                 return (module as any)._compile(cache[qualifiedName], filename);
@@ -82,7 +86,7 @@ export async function main() {
                     if (!qualifiedNames.includes(qualifiedName)) {
                         qualifiedNames.push(qualifiedName);
                     }
-                    buildModel({ project, qualifiedName });
+                    await buildModel({ project, qualifiedName });
                 }
             }
             const result = await esbuild.build({

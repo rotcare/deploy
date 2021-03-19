@@ -1,4 +1,4 @@
-import { Cloud, SERVERLESS_TYPE } from '@rotcare/cloud';
+import { Cloud } from '@rotcare/cloud';
 import * as esbuild from 'esbuild';
 import { buildModel, esbuildPlugin } from './buildModel/buildModel';
 import { Project } from './Project';
@@ -55,12 +55,12 @@ export async function deployBackend(cloud: Cloud, project: Project) {
 }
 
 function evalToListFunctionNames(bundledCode: string) {
-    const SERVERLESS: SERVERLESS_TYPE = {} as any;
+    const exports: any = {};
     vm.runInNewContext(
         bundledCode,
-        vm.createContext({ SERVERLESS, exports: {}, require: global.require }),
+        vm.createContext({ exports, require: global.require }),
     );
-    return Object.keys(SERVERLESS.functions || {});
+    return Object.keys(exports.httpRpcServers || {});
 }
 
 function listBackendQualifiedNames(project: Project) {

@@ -61,8 +61,8 @@ export async function buildModel(options: { project: Project; qualifiedName: str
         if (!project.incompleteModels.has(model.qualifiedName)) {
             return model;
         }
-        project.incompleteModels.delete(model.qualifiedName);
     }
+    project.incompleteModels.delete(qualifiedName);
     const imports: babel.ImportDeclaration[] = [];
     const beforeStmts: babel.Statement[] = [];
     const classDecls: babel.ClassDeclaration[] = [];
