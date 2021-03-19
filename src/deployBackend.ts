@@ -1,7 +1,6 @@
 import { Cloud } from '@rotcare/cloud';
 import * as esbuild from 'esbuild';
-import { buildModel, esbuildPlugin } from './buildModel/buildModel';
-import { Project } from './Project';
+import { buildModel, esbuildPlugin, Project } from '@rotcare/project';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as vm from 'vm';
@@ -31,8 +30,8 @@ export async function deployBackend(cloud: Cloud, project: Project) {
             incremental: true,
         }) as Promise<esbuild.BuildIncremental>);
     }
-    if (project.incompleteModels.size > 0) {
-        project.incompleteModels.add('backend');
+    if (project.toBuild.size > 0) {
+        project.toBuild.add('backend');
         return;
     }
     const bundledCode = result.outputFiles![0].text;

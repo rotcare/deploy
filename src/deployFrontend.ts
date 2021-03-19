@@ -3,8 +3,7 @@ import * as esbuild from 'esbuild';
 import * as fs from 'fs';
 import { promisify } from 'util';
 import * as path from 'path';
-import { esbuildPlugin } from './buildModel/buildModel';
-import { Project } from './Project';
+import { esbuildPlugin, Project } from '@rotcare/project';
 
 const readFile = promisify(fs.readFile);
 const lstat = promisify(fs.lstat);

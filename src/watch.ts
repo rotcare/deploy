@@ -1,6 +1,6 @@
 import * as memCloud from '@rotcare/cloud-mem';
 import { deployFrontend } from './deployFrontend';
-import { Project } from './Project';
+import { buildModel, Project } from '@rotcare/project';
 import { Cloud } from '@rotcare/cloud';
 import { deployBackend } from './deployBackend';
 
@@ -24,7 +24,7 @@ function deploy(cloud: Cloud, project: Project, changedFile?: string) {
         console.log(`detected ${changedFile} changed, trigger re-deploying...`);
     }
     changedFiles.length = 0;
-    const promises = [
+    const promises: Promise<any>[] = [
         deployFrontend(cloud, project).catch((e) => {
             console.error(`deployFrontend failed`, e);
         }),
@@ -32,10 +32,19 @@ function deploy(cloud: Cloud, project: Project, changedFile?: string) {
             console.error(`deployBackend failed`, e);
         }),
     ];
+    for (const qualifiedName of project.toBuild) {
+        if (!project.buildFailed.has(qualifiedName)) {
+            promises.push(
+                buildModel({ project, qualifiedName }).catch((e) => {
+                    console.error('buildModel failed', e);
+                }),
+            );
+        }
+    }
     deploying = Promise.all(promises);
     deploying.finally(() => {
         deploying = undefined;
-        if (changedFiles.length > 0 || project.incompleteModels.size > 0) {
+        if (changedFiles.length > 0 || project.toBuild.size > 0) {
             // some file changed during deploying
             deploy(cloud, project);
         }
