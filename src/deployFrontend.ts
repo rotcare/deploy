@@ -1,33 +1,15 @@
 import { Cloud } from '@rotcare/cloud';
-import * as esbuild from 'esbuild';
 import * as fs from 'fs';
 import { promisify } from 'util';
 import * as path from 'path';
-import { esbuildPlugin, Project } from '@rotcare/project';
+import { Project } from '@rotcare/project';
+import { buildFrontend} from '@rotcare/project-esbuild';
 
 const readFile = promisify(fs.readFile);
 const lstat = promisify(fs.lstat);
 
-let result: esbuild.BuildIncremental;
-
 export async function deployFrontend(cloud: Cloud, project: Project) {
-    if (result) {
-        result = await result.rebuild();
-    } else {
-        result = await (esbuild.build({
-            sourcemap: 'inline',
-            keepNames: true,
-            bundle: true,
-            entryPoints: ['@motherboard/frontend'],
-            write: false,
-            platform: 'browser',
-            target: 'es2020',
-            absWorkingDir: project.projectDir,
-            define: { 'process.env.NODE_ENV': `"development"` },
-            plugins: [esbuildPlugin({ project })],
-            incremental: true,
-        }) as Promise<esbuild.BuildIncremental>);
-    }
+    const result = await buildFrontend(project);
     const htmlPath = path.join(project.projectDir, 'index.html');
     project.subscribePath(htmlPath);
     const html = await readFileWithCache(htmlPath);

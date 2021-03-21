@@ -6,7 +6,5 @@ import { deployFrontend } from './deployFrontend';
 export async function deploy(projectDir: string) {
     const cloud = await memCloud.startCloud();
     const project = new Project(projectDir);
-    watch(project, async () => {
-        await Promise.all([deployBackend(cloud, project), deployFrontend(cloud, project)]);
-    });
+    watch(project, [deployBackend.bind(undefined, cloud), deployFrontend.bind(undefined, cloud)]);
 }
